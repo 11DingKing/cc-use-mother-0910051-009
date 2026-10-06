@@ -201,14 +201,20 @@ class ActualProcedureRecordBase(BaseModel):
     remark: Optional[str] = None
 
 
+class RecordParticipantInput(BaseModel):
+    practitioner_id: int
+    role: Optional[str] = "参与人"
+
+
 class ActualProcedureRecordCreate(ActualProcedureRecordBase):
-    pass
+    participants: Optional[List[RecordParticipantInput]] = None
 
 
 class ActualProcedureRecord(ActualProcedureRecordBase):
     id: int
     is_over_range: bool = False
     over_range_detail: Optional[str] = None
+    judgment_conclusion: Optional[str] = None
     created_at: datetime
     procedure: Optional[Procedure] = None
     practitioner: Optional[Practitioner] = None
@@ -482,3 +488,106 @@ class ComplianceGradeDistribution(BaseModel):
     count: int
     percentage: float
     score_range: str
+
+
+# ---------------------------------------------------------------------------
+# 时点证据审计
+# ---------------------------------------------------------------------------
+
+class EvidenceItemOut(BaseModel):
+    side: str
+    dimension: str
+    item_key: str
+    status: str
+    version_id: Optional[int] = None
+    version_no: Optional[int] = None
+    change_type: Optional[str] = None
+    valid_from: Optional[date] = None
+    valid_until: Optional[date] = None
+    recorded_at: Optional[datetime] = None
+    backfilled_after_event: Optional[bool] = None
+    detail: Optional[str] = None
+
+
+class ParticipantEvidenceOut(BaseModel):
+    participant_id: Optional[int] = None
+    practitioner_id: int
+    practitioner_name: str
+    role: str
+    is_primary: bool
+    evidence: List[EvidenceItemOut] = []
+
+
+class JudgmentOut(BaseModel):
+    sequence_no: int
+    concluded_at: datetime
+    conclusion: str
+    reason: str
+    trigger_remark: Optional[str] = None
+    changed_from_previous: bool
+    disposition_impact: Optional[str] = None
+    evidence_summary: Optional[str] = None
+    institution_evidence: List[EvidenceItemOut] = []
+    participants: List[ParticipantEvidenceOut] = []
+
+
+class RecordAuditOut(BaseModel):
+    record_id: int
+    institution_id: int
+    institution_name: str
+    practitioner_id: int
+    practitioner_name: str
+    procedure_id: int
+    procedure_name: str
+    procedure_date: date
+    current_is_over_range: bool
+    current_detail: Optional[str] = None
+    latest_conclusion: Optional[str] = None
+    judgment_count: int
+    judgments: List[JudgmentOut] = []
+
+
+class EvidenceChangeRequest(BaseModel):
+    change_type: str = Field(
+        description="变更类型：暂停/恢复/变更/追溯更正/事后补录"
+    )
+    effective_date: Optional[date] = Field(
+        None, description="变更生效日（暂停/恢复/普通变更使用）"
+    )
+    valid_from: Optional[date] = Field(
+        None, description="追溯更正/补录时，证据主张的生效起始日"
+    )
+    valid_until: Optional[date] = Field(
+        None, description="证据主张的有效截止日"
+    )
+    is_active: bool = True
+    remark: Optional[str] = None
+
+
+class EvidenceChangeResult(BaseModel):
+    dimension: str
+    version_id: int
+    version_no: int
+    change_type: str
+    valid_from: Optional[date] = None
+    valid_until: Optional[date] = None
+    rejudged_records: int
+    changed_conclusions: int
+    affected_record_ids: List[int] = []
+
+
+class ParticipantAddRequest(BaseModel):
+    practitioner_id: int
+    role: Optional[str] = "参与人"
+
+
+class SingleCheckEvidence(BaseModel):
+    institution_name: str
+    practitioner_name: str
+    procedure_name: str
+    procedure_date: date
+    is_over_range: bool
+    conclusion: str
+    issues: List[str] = []
+    institution_evidence: List[EvidenceItemOut] = []
+    participants: List[ParticipantEvidenceOut] = []

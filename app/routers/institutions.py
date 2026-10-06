@@ -90,6 +90,29 @@ def add_institution_license(
         raise HTTPException(status_code=400, detail="许可证编号已存在")
     db_license = InstitutionLicense(**license_data.model_dump())
     db.add(db_license)
+    db.flush()
+    # 登记证据版本链：主张生效日早于系统登记日的，属倒签/事后补录
+    from .. import evidence_audit as ea
+    from ..models import EvidenceChangeType
+    from datetime import date as _date
+    ct = (
+        EvidenceChangeType.BACKFILL
+        if db_license.issue_date and db_license.issue_date < _date.today()
+        else EvidenceChangeType.INITIAL
+    )
+    ea.register_license_version(
+        db, db_license.id, ct,
+        valid_from=db_license.issue_date,
+        valid_until=db_license.valid_until,
+        is_active=bool(db_license.is_valid),
+    )
+    # 补证可能影响治疗日在其生效区间内的历史记录：追加重新判定
+    ea.rejudge_after_evidence_change(
+        db, dimension="license", change_type=ct,
+        institution_id=db_license.institution_id,
+        valid_from=db_license.issue_date, valid_until=db_license.valid_until,
+        trigger_remark="机构执业许可证建档/补证",
+    )
     db.commit()
     db.refresh(db_license)
     return db_license
@@ -124,6 +147,27 @@ def authorize_procedure_for_institution(
         raise HTTPException(status_code=400, detail="该项目已授权")
     db_auth = InstitutionAuthorizedProcedure(**auth_data.model_dump())
     db.add(db_auth)
+    db.flush()
+    # 登记机构项目授权初始版本；授权日早于系统登记日的按事后补录处理
+    from .. import evidence_audit as ea
+    from ..models import EvidenceChangeType
+    from datetime import date as _date
+    ct = (
+        EvidenceChangeType.BACKFILL
+        if db_auth.authorized_date and db_auth.authorized_date < _date.today()
+        else EvidenceChangeType.INITIAL
+    )
+    ea.register_institution_auth_version(
+        db, db_auth.id, ct,
+        valid_from=db_auth.authorized_date,
+    )
+    # 机构项目授权建档/补证：重判该机构该项目的历史记录
+    ea.rejudge_after_evidence_change(
+        db, dimension="institution_auth", change_type=ct,
+        institution_id=db_auth.institution_id, procedure_id=db_auth.procedure_id,
+        valid_from=db_auth.authorized_date,
+        trigger_remark="机构项目授权建档/补证",
+    )
     db.commit()
     db.refresh(db_auth)
     from ..schemas import Procedure as ProcedureSchema

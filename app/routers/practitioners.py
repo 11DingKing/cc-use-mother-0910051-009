@@ -90,6 +90,29 @@ def add_qualification(
         raise HTTPException(status_code=400, detail="证书编号已存在")
     db_qual = PractitionerQualification(**qual_data.model_dump())
     db.add(db_qual)
+    db.flush()
+    # 登记人员资质初始版本；发证日早于系统登记日的按事后补录处理
+    from .. import evidence_audit as ea
+    from ..models import EvidenceChangeType
+    from datetime import date as _date
+    ct = (
+        EvidenceChangeType.BACKFILL
+        if db_qual.issue_date and db_qual.issue_date < _date.today()
+        else EvidenceChangeType.INITIAL
+    )
+    ea.register_qualification_version(
+        db, db_qual.id, ct,
+        valid_from=db_qual.issue_date,
+        valid_until=db_qual.valid_until,
+        is_active=bool(db_qual.is_valid),
+    )
+    # 资质建档/补证：重判该人员治疗日在其生效区间内的历史记录
+    ea.rejudge_after_evidence_change(
+        db, dimension="qualification", change_type=ct,
+        practitioner_id=db_qual.practitioner_id,
+        valid_from=db_qual.issue_date, valid_until=db_qual.valid_until,
+        trigger_remark="人员资质建档/补证",
+    )
     db.commit()
     db.refresh(db_qual)
     return db_qual
@@ -124,6 +147,27 @@ def authorize_procedure_for_practitioner(
         raise HTTPException(status_code=400, detail="该项目已授权")
     db_auth = PractitionerAuthorizedProcedure(**auth_data.model_dump())
     db.add(db_auth)
+    db.flush()
+    # 登记人员项目授权初始版本；授权日早于系统登记日的按事后补录处理
+    from .. import evidence_audit as ea
+    from ..models import EvidenceChangeType
+    from datetime import date as _date
+    ct = (
+        EvidenceChangeType.BACKFILL
+        if db_auth.authorized_date and db_auth.authorized_date < _date.today()
+        else EvidenceChangeType.INITIAL
+    )
+    ea.register_practitioner_auth_version(
+        db, db_auth.id, ct,
+        valid_from=db_auth.authorized_date,
+    )
+    # 人员项目授权建档/补证：重判该人员该项目的历史记录
+    ea.rejudge_after_evidence_change(
+        db, dimension="practitioner_auth", change_type=ct,
+        practitioner_id=db_auth.practitioner_id, procedure_id=db_auth.procedure_id,
+        valid_from=db_auth.authorized_date,
+        trigger_remark="人员项目授权建档/补证",
+    )
     db.commit()
     db.refresh(db_auth)
     db_auth.procedure = procedure
