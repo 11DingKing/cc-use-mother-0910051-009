@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .database import engine, Base
 from .routers import (
     institutions, practitioners, procedures,
-    compliance, clues, stats, compliance_score
+    compliance, clues, stats, compliance_score, determinations
 )
 
 Base.metadata.create_all(bind=engine)
@@ -30,6 +30,7 @@ app.include_router(compliance.router, prefix="/api/compliance", tags=["合规核
 app.include_router(clues.router, prefix="/api/clues", tags=["违规线索管理"])
 app.include_router(stats.router, prefix="/api/stats", tags=["统计分析"])
 app.include_router(compliance_score.router, prefix="/api/compliance-score", tags=["机构合规评分与监管计划"])
+app.include_router(determinations.router, prefix="/api/determinations", tags=["发生时判定与审计"])
 
 
 @app.get("/api/health", tags=["系统"])
